@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AEPi in Israel Summer 25'</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    body {
+      /* Updated background photo of Israel */
+      background: url('https://www.planetware.com/wpimages/2019/12/israel-in-pictures-beautiful-places-to-photograph-jerusalem.jpg') no-repeat center center fixed;
+      background-size: cover;
+    }
+    /* Dark overlay for readability */
+    .overlay {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      background: rgba(255, 255, 255, 0.8);
+      z-index: 0;
+    }
+    #map { height: 500px; z-index: 1; }
+  </style>
+</head>
+<body class="relative text-gray-800">
+  <!-- Overlay behind content -->
+  <div class="overlay"></div>
+
+  <!-- Header -->
+  <header class="relative bg-white bg-opacity-90 shadow p-4 mb-6 z-10">
+    <h1 class="text-2xl font-semibold text-center">AEPi in Israel Summer 25' Tracker</h1>
+  </header>
+
+  <!-- Controls -->
+  <section class="relative max-w-4xl mx-auto p-4 bg-white bg-opacity-90 rounded z-10">
+    <label for="filter-date" class="block mb-2 font-medium">Show friends in Israel on:</label>
+    <input type="date" id="filter-date" class="border rounded px-3 py-2 w-full" />
+  </section>
+
+  <!-- Main content -->
+  <main class="relative max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6 p-4 pt-8 z-10">
+    <!-- Map -->
+    <div class="bg-white bg-opacity-90 rounded shadow p-4">
+      <h2 class="text-lg font-medium mb-2">Map View</h2>
+      <div id="map"></div>
+    </div>
+    <!-- List -->
+    <div class="bg-white bg-opacity-90 rounded shadow p-4">
+      <h2 class="text-lg font-medium mb-2">List View</h2>
+      <ul id="friend-list" class="space-y-3"></ul>
+    </div>
+  </main>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // Sample data
+    const friends = [
+      { name: 'Ziv', from: '2025-06-10', to: '2025-08-10', place: 'Tel Aviv, Haifa' },
+      { name: 'James Hirschowitz', from: '2025-06-15', to: '2025-07-18', place: 'Tel Aviv' },
+      { name: 'Shai Grossman', from: '2025-05-21', to: '2025-07-17', place: 'Tel Aviv but also everywhere' },
+      { name: 'Petlak', from: '2025-05-23', to: '2025-05-27', place: 'Tel Aviv' },
+      { name: 'Guy Golan', from: '2025-07-03', to: '2025-08-14', place: 'Ramat Gan/Tel Aviv' },
+      { name: 'Dylan Goldman', from: '2025-05-19', to: '2025-05-29', place: 'All over, mostly Tel Aviv, Jerusalem, Galilee' },
+      { name: 'Ayal D Meyers', from: '2025-07-16', to: '2025-08-28', place: 'Tel Aviv + south' },
+      { name: 'Cole Kellison', from: '2025-07-08', to: '2025-08-08', place: 'Tel Aviv (1st week), Jerusalem (after)' }
+    ];
+
+    // Leaflet map setup
+    const map = L.map('map').setView([31.5, 34.75], 8);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Custom marker icons
+    const defaultIcon = L.icon({
+      iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
+    const highlightIcon = L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
+
+    let markers = [];
+
+    function parseLocations(place) {
+      const lookup = {
+        'Tel Aviv': [32.0853, 34.7818],
+        'Haifa': [32.7940, 34.9896],
+        'Ramat Gan': [32.0704, 34.8233],
+        'Jerusalem': [31.7683, 35.2137],
+        'Galilee': [32.8628, 35.2744],
+        'south': [29.5, 34.9]
+      };
+      for (let key in lookup) {
+        if (place.includes(key)) return lookup[key];
+      }
+      return [31.5, 34.75];
+    }
+
+    function updateDisplay(dateStr) {
+      // Remove existing markers
+      markers.forEach(mObj => map.removeLayer(mObj.marker));
+      markers = [];
+      document.getElementById('friend-list').innerHTML = '';
+
+      const selected = new Date(dateStr);
+      friends.forEach(f => {
+        const from = new Date(f.from);
+        const to = new Date(f.to);
+        if (selected >= from && selected <= to) {
+          // List item
+          const li = document.createElement('li');
+          li.className = 'p-3 border rounded flex justify-between items-center hover:bg-gray-100 cursor-pointer';
+          li.innerHTML = `
+            <div>
+              <strong>${f.name}</strong><br/>
+              <small>${f.place}</small>
+            </div>
+            <div class="text-sm">
+              ${f.from} → ${f.to}
+            </div>
+          `;
+          document.getElementById('friend-list').appendChild(li);
+
+          // Jitter for overlapping
+          const [lat, lng] = parseLocations(f.place);
+          const jitter = 0.02;
+          const latOffset = lat + (Math.random() - 0.5) * jitter;
+          const lngOffset = lng + (Math.random() - 0.5) * jitter;
+
+          // Create marker
+          const m = L.marker([latOffset, lngOffset], { icon: defaultIcon })
+            .addTo(map)
+            .bindPopup(`<strong>${f.name}</strong><br/>${f.place}<br/>${f.from} → ${f.to}`);
+
+          markers.push({ marker: m, name: f.name });
+
+          // Hover highlight
+          li.addEventListener('mouseover', () => {
+            markers
+              .filter(mObj => mObj.name === f.name)
+              .forEach(mObj => mObj.marker.setIcon(highlightIcon));
+          });
+          li.addEventListener('mouseout', () => {
+            markers
+              .filter(mObj => mObj.name === f.name)
+              .forEach(mObj => mObj.marker.setIcon(defaultIcon));
+          });
+        }
+      });
+    }
+
+    // Date filter hookup
+    const input = document.getElementById('filter-date');
+    input.addEventListener('change', () => updateDisplay(input.value));
+
+    // Initialize today
+    const today = new Date().toISOString().split('T')[0];
+    input.value = today;
+    updateDisplay(today);
+  </script>
+</body>
+</html>
